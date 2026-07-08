@@ -49,6 +49,29 @@
   .banner { position: fixed; left: 14px; right: 14px; top: 40%;
             background: rgba(30,20,0,.9); color: #ffd60a; border-radius: 14px;
             padding: 16px; font-size: 14px; text-align: center; line-height: 1.5; }
+
+  /* Shutter button */
+  .shutterRow { display: flex; justify-content: center; align-items: center; padding: 2px 0; }
+  .shutter { width: 72px; height: 72px; border-radius: 50%; padding: 0; flex: none;
+             background: #fff; border: 4px solid rgba(255,255,255,.35);
+             box-shadow: 0 0 0 3px rgba(0,0,0,.4) inset; }
+  .shutter:active { transform: scale(.92); }
+
+  /* Capture flash */
+  #flash { position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none;
+           transition: opacity .06s ease-out; }
+  #flash.fire { opacity: 1; transition: none; }
+
+  /* Result / review screen */
+  #result { position: fixed; inset: 0; background: #000; z-index: 20;
+            display: flex; flex-direction: column;
+            padding: env(safe-area-inset-top) 14px env(safe-area-inset-bottom); }
+  #result img { flex: 1; min-height: 0; width: 100%; object-fit: contain; border-radius: 14px; background: #111; }
+  #result .caption { text-align: center; padding: 12px; font-variant-numeric: tabular-nums; }
+  #result .caption .big { font-size: 18px; font-weight: 700; }
+  #result .caption .sub { font-size: 13px; opacity: .6; margin-top: 3px; }
+  #result .btnrow { margin-top: 8px; }
+
   .hidden { display: none !important; }
 </style>
 </head>
@@ -89,11 +112,28 @@
       <div class="head"><span class="k">ISO</span><span class="v" id="isoV">100</span></div>
       <input id="iso" type="range" min="0" max="6" step="1" value="1">
     </div>
+    <div class="shutterRow">
+      <button id="shutterBtn" class="shutter" aria-label="Take photo"></button>
+    </div>
     <div class="btnrow">
       <button id="startBtn">Start</button>
       <button id="refBtn" class="ghost">Set reference</button>
       <button id="clipBtn" class="ghost">Clipping</button>
     </div>
+  </div>
+</div>
+
+<div id="flash"></div>
+
+<div id="result" class="hidden">
+  <img id="resultImg" alt="Captured photo">
+  <div class="caption">
+    <div class="big" id="capSettings">—</div>
+    <div class="sub" id="capExposure">—</div>
+  </div>
+  <div class="btnrow">
+    <button id="retakeBtn" class="ghost">Retake</button>
+    <button id="saveBtn">Save / Share</button>
   </div>
 </div>
 
@@ -128,7 +168,7 @@ function current() {
 
 /* ---------------- WebGL ---------------- */
 const canvas = el('gl');
-const gl = canvas.getContext('webgl', { antialias: false, preserveDrawingBuffer: false });
+const gl = canvas.getContext('webgl', { antialias: false, preserveDrawingBuffer: true });
 
 const VS = `
   attribute vec2 aPos;
@@ -252,6 +292,52 @@ el('clipBtn').addEventListener('click', e => {
   showClip = !showClip;
   e.target.classList.toggle('on', showClip);
 });
+
+/* ---------------- Capture / review ---------------- */
+let lastBlob = null, lastURL = null;
+
+function capture(){
+  if (!running) { start(); return; }        // if not started yet, start the camera
+  // shutter flash for feedback
+  const f = el('flash');
+  f.classList.add('fire');
+  requestAnimationFrame(() => requestAnimationFrame(() => f.classList.remove('fire')));
+
+  const { N, t, S } = current();
+  const stops = refH ? Math.log2(expH(t, S, N) / refH) : 0;
+
+  // The preview canvas already holds the exposure-adjusted frame (buffer is preserved).
+  canvas.toBlob(blob => {
+    if (!blob) return;
+    if (lastURL) URL.revokeObjectURL(lastURL);
+    lastBlob = blob;
+    lastURL = URL.createObjectURL(blob);
+    el('resultImg').src = lastURL;
+    el('capSettings').textContent = `f/${N}  ·  ${fmtShutter(t)}  ·  ISO ${S}`;
+    el('capExposure').textContent =
+      `EV ${ev100(t, S, N).toFixed(1)}   ·   ${(stops >= 0 ? '+' : '')}${stops.toFixed(1)} EV vs reference`;
+    el('result').classList.remove('hidden');
+  }, 'image/jpeg', 0.92);
+}
+
+async function saveOrShare(){
+  if (!lastBlob) return;
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const file = new File([lastBlob], `exposure-${stamp}.jpg`, { type: 'image/jpeg' });
+  // iOS: Web Share sheet includes "Save Image" to Photos.
+  if (navigator.canShare && navigator.canShare({ files: [file] })){
+    try { await navigator.share({ files: [file] }); return; }
+    catch (e) { return; } // user cancelled
+  }
+  // Fallback: trigger a download.
+  const a = document.createElement('a');
+  a.href = lastURL; a.download = file.name;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+el('shutterBtn').addEventListener('click', capture);
+el('saveBtn').addEventListener('click', saveOrShare);
+el('retakeBtn').addEventListener('click', () => el('result').classList.add('hidden'));
 
 /* ---------------- Camera ---------------- */
 async function start(){
