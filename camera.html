@@ -71,6 +71,14 @@
   #result .caption .sub { font-size: 13px; opacity: .6; margin-top: 3px; }
   #result .btnrow { margin-top: 8px; }
 
+  /* M6 metering reticle */
+  .reticle { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+             pointer-events: none; z-index: 2; }
+  .reticle .spot { width: 46%; max-width: 62vh; aspect-ratio: 1;
+                   border: 2px solid rgba(255,255,255,.5); border-radius: 50%; }
+  .reticle .dot  { position: absolute; width: 6px; height: 6px; border-radius: 50%;
+                   background: rgba(255,255,255,.85); }
+
   .hidden { display: none !important; }
 </style>
 </head>
@@ -78,24 +86,27 @@
 <canvas id="gl"></canvas>
 <video id="video" playsinline muted autoplay class="hidden"></video>
 
+<div class="reticle"><div class="spot"></div><div class="dot"></div></div>
+
 <div class="ui">
   <div class="topbar">
     <div class="meter">
-      <div class="stops ok" id="stops">0.0 EV</div>
-      <div class="sub" id="subEV">at reference</div>
+      <div class="stops ok" id="stops">● 0.0</div>
+      <div class="sub" id="subEV">M6 meter</div>
     </div>
-    <div class="meter">
-      <div class="stops" style="font-size:15px" id="tripleEV">EV —</div>
-      <div class="sub">scene equiv.</div>
+    <div class="meter" style="text-align:right">
+      <div class="stops" style="font-size:15px" id="sceneEV">EV —</div>
+      <div class="sub" id="setEVsub">set EV —</div>
     </div>
   </div>
 
   <div class="scaleWrap"></div>
 
   <div id="banner" class="banner">
-    Tap <b>Start</b> and allow the camera.<br>
-    Set the sliders to a good-looking exposure, tap <b>Set reference</b>,
-    then change ISO / shutter / aperture to preview over- and under-exposure.
+    Tap <b>Start</b> and allow the camera.<br><br>
+    The circle is the <b>Leica-M6 selective meter</b>. Aim it at your subject, dial the exposure
+    your M6 says is correct, then tap <b>Set reference</b> once to calibrate. The top-left shows
+    ◄ under / ● correct / ► over for your current settings.
   </div>
 
   <div class="bottom">
@@ -163,6 +174,37 @@ function current() {
   const t = SHUTTERS[+shR.value];
   const S = ISOS[+isoR.value];
   return { N, t, S };
+}
+
+/* ---------------- Leica M6 selective / centre-weighted meter ----------------
+   A radial Gaussian weight over a central circle (corners excluded) — the M6's
+   large, centre-biased selective spot. Reads the live scene each frame. */
+const sampleCanvas = document.createElement('canvas');
+sampleCanvas.width = 64; sampleCanvas.height = 64;
+const sctx = sampleCanvas.getContext('2d', { willReadFrequently: true });
+const METER_SIGMA = 0.5;   // smaller = tighter/more spot-like, larger = broader
+
+// EV100 = calOffset + log2(luminance). Calibrated via "Set reference", persisted.
+let calOffset = parseFloat(localStorage.getItem('sim_calOffset'));
+if (Number.isNaN(calOffset)) calOffset = 8.5;
+
+function meterLuminance(){
+  const w = sampleCanvas.width, h = sampleCanvas.height;
+  sctx.drawImage(video, 0, 0, w, h);
+  const data = sctx.getImageData(0, 0, w, h).data;
+  const cx = w/2, cy = h/2, unit = Math.min(w,h)/2;
+  let sum = 0, wsum = 0;
+  for (let y = 0; y < h; y++){
+    for (let x = 0; x < w; x++){
+      const dx = (x-cx)/unit, dy = (y-cy)/unit, d2 = dx*dx + dy*dy;
+      if (d2 > 1) continue;
+      const wt = Math.exp(-d2 / (2*METER_SIGMA*METER_SIGMA));
+      const i = (y*w + x) * 4;
+      const Y = (0.2126*data[i] + 0.7152*data[i+1] + 0.0722*data[i+2]) / 255;
+      sum += Y*wt; wsum += wt;
+    }
+  }
+  return wsum ? sum/wsum : 0;
 }
 
 /* ---------------- WebGL ---------------- */
@@ -258,19 +300,27 @@ function frame(){
     gl.uniform1f(uClip, showClip ? 1 : 0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 
-    updateMeter(mult, t, S, N);
+    // Live M6 meter reading of the actual scene.
+    const Y = Math.max(meterLuminance(), 1/255);
+    const sceneEV = calOffset + Math.log2(Y);
+    updateMeter(sceneEV, t, S, N);
   }
   requestAnimationFrame(frame);
 }
 
-function updateMeter(mult, t, S, N){
-  const stops = Math.log2(mult);
+// sceneEV = the light the M6 meter reads; setEV = your dialed settings.
+// error > 0 → settings let in too little light → under-exposed (and vice-versa).
+function updateMeter(sceneEV, t, S, N){
+  const setEV = ev100(t, S, N);
+  const err = setEV - sceneEV;
   const stEl = el('stops');
-  stEl.textContent = (stops >= 0 ? '+' : '') + stops.toFixed(1) + ' EV';
-  stEl.className = 'stops ' + (Math.abs(stops) < 0.25 ? 'ok' : stops > 0 ? 'over' : 'under');
-  el('subEV').textContent = Math.abs(stops) < 0.25 ? 'at reference'
-      : (stops > 0 ? 'over-exposed' : 'under-exposed');
-  el('tripleEV').textContent = 'EV ' + ev100(t, S, N).toFixed(1);
+  const arrow = Math.abs(err) < 0.25 ? '●' : err > 0 ? '◄' : '►';
+  stEl.textContent = arrow + '  ' + (err >= 0 ? '+' : '') + err.toFixed(1);
+  stEl.className = 'stops ' + (Math.abs(err) < 0.25 ? 'ok' : err > 0 ? 'under' : 'over');
+  el('subEV').textContent = Math.abs(err) < 0.25 ? 'correct exposure'
+      : err > 0 ? 'under-exposed' : 'over-exposed';
+  el('sceneEV').textContent = 'EV ' + sceneEV.toFixed(1);
+  el('setEVsub').textContent = 'set EV ' + setEV.toFixed(1);
 }
 
 /* ---------------- Controls ---------------- */
@@ -280,12 +330,26 @@ function refreshLabels(){
   el('shV').textContent  = fmtShutter(t);
   el('isoV').textContent = S;
 }
-[apR, shR, isoR].forEach(r => r.addEventListener('input', refreshLabels));
+// Restore last-used dial positions (persisted across refreshes).
+try {
+  const saved = JSON.parse(localStorage.getItem('sim_dials') || 'null');
+  if (saved) { apR.value = saved.ap; shR.value = saved.sh; isoR.value = saved.iso; }
+} catch (e) { /* ignore corrupt storage */ }
+
+function saveDials(){
+  localStorage.setItem('sim_dials', JSON.stringify({ ap: apR.value, sh: shR.value, iso: isoR.value }));
+}
+[apR, shR, isoR].forEach(r => r.addEventListener('input', () => { refreshLabels(); saveDials(); }));
 refreshLabels();
 
 el('refBtn').addEventListener('click', () => {
+  if (!running) return;
   const { N, t, S } = current();
-  refH = expH(t, S, N);   // make current triple the neutral/correct exposure
+  refH = expH(t, S, N);                      // neutral for the brightness preview
+  // Calibrate the M6 meter: these settings correctly expose the scene in the circle.
+  const Y = Math.max(meterLuminance(), 1/255);
+  calOffset = ev100(t, S, N) - Math.log2(Y);
+  localStorage.setItem('sim_calOffset', String(calOffset));  // survives refresh
 });
 el('clipBtn').addEventListener('click', e => {
   showClip = !showClip;
