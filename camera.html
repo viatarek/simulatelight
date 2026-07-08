@@ -15,63 +15,54 @@
 
   #gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block; background: #000; }
 
-  /* Overlay UI */
   .ui { position: fixed; inset: 0; display: flex; flex-direction: column;
         padding: env(safe-area-inset-top) 14px env(safe-area-inset-bottom);
         pointer-events: none; }
   .ui > * { pointer-events: auto; }
 
-  .topbar { display: flex; justify-content: space-between; align-items: flex-start; margin-top: 8px; }
+  .topbar { display: flex; justify-content: space-between; align-items: flex-start; margin-top: 8px; gap: 8px; }
   .meter { background: rgba(0,0,0,.5); border-radius: 12px; padding: 8px 12px; backdrop-filter: blur(8px); }
   .meter .stops { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
   .meter .stops.over  { color: #ff453a; }
   .meter .stops.under { color: #0a84ff; }
   .meter .stops.ok    { color: #30d158; }
+  .meter .stops.live  { color: #ffd60a; }
   .meter .sub { font-size: 11px; opacity: .6; }
 
-  .scaleWrap { flex: 1; }
+  .spacer { flex: 1; }
+
+  .hint { align-self: center; background: rgba(0,0,0,.55); border-radius: 10px;
+          padding: 8px 14px; font-size: 13px; margin-bottom: 10px; text-align: center; }
 
   .bottom { display: flex; flex-direction: column; gap: 12px;
             background: rgba(0,0,0,.45); border-radius: 18px; padding: 14px;
             backdrop-filter: blur(10px); }
-  .dial { }
   .dial .head { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px; }
   .dial .head .k { opacity: .6; text-transform: uppercase; letter-spacing: .05em; }
   .dial .head .v { font-weight: 700; font-variant-numeric: tabular-nums; }
   input[type=range] { width: 100%; accent-color: #ffd60a; margin: 0; }
+
+  .shutterRow { display: flex; justify-content: center; align-items: center; padding: 2px 0; }
+  .shutter { width: 74px; height: 74px; border-radius: 50%; padding: 0; flex: none;
+             background: #fff; border: 4px solid rgba(255,255,255,.35);
+             box-shadow: 0 0 0 3px rgba(0,0,0,.4) inset; }
+  .shutter.frozen { background: #ff453a; }
+  .shutter:active { transform: scale(.92); }
 
   .btnrow { display: flex; gap: 10px; }
   button { flex: 1; padding: 12px; border: none; border-radius: 12px;
            font-size: 14px; font-weight: 600; color: #000; background: #ffd60a; }
   button.ghost { background: rgba(255,255,255,.14); color: #fff; }
   button.on { background: #ff453a; color: #fff; }
+  button:disabled { opacity: .35; }
 
-  .banner { position: fixed; left: 14px; right: 14px; top: 40%;
-            background: rgba(30,20,0,.9); color: #ffd60a; border-radius: 14px;
-            padding: 16px; font-size: 14px; text-align: center; line-height: 1.5; }
+  #flash { position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+  #flash.fire { opacity: 1; }
+  #flash.fade { opacity: 0; transition: opacity .25s ease-out; }
 
-  /* Shutter button */
-  .shutterRow { display: flex; justify-content: center; align-items: center; padding: 2px 0; }
-  .shutter { width: 72px; height: 72px; border-radius: 50%; padding: 0; flex: none;
-             background: #fff; border: 4px solid rgba(255,255,255,.35);
-             box-shadow: 0 0 0 3px rgba(0,0,0,.4) inset; }
-  .shutter:active { transform: scale(.92); }
-
-  /* Capture flash */
-  #flash { position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none;
-           transition: opacity .06s ease-out; }
-  #flash.fire { opacity: 1; transition: none; }
-
-  /* Result / review screen */
-  #result { position: fixed; inset: 0; background: #000; z-index: 20;
-            display: flex; flex-direction: column;
-            padding: env(safe-area-inset-top) 14px env(safe-area-inset-bottom); }
-  #result img { flex: 1; min-height: 0; width: 100%; object-fit: contain; border-radius: 14px; background: #111; }
-  #result .caption { text-align: center; padding: 12px; font-variant-numeric: tabular-nums; }
-  #result .caption .big { font-size: 18px; font-weight: 700; }
-  #result .caption .sub { font-size: 13px; opacity: .6; margin-top: 3px; }
-  #result .btnrow { margin-top: 8px; }
-
+  .banner { position: fixed; left: 14px; right: 14px; top: 38%;
+            background: rgba(30,20,0,.92); color: #ffd60a; border-radius: 14px;
+            padding: 16px; font-size: 14px; text-align: center; line-height: 1.5; z-index: 5; }
   .hidden { display: none !important; }
 </style>
 </head>
@@ -82,22 +73,18 @@
 <div class="ui">
   <div class="topbar">
     <div class="meter">
-      <div class="stops ok" id="stops">0.0 EV</div>
-      <div class="sub" id="subEV">at reference</div>
+      <div class="stops live" id="stops">LIVE</div>
+      <div class="sub" id="subEV">framing…</div>
     </div>
     <div class="meter">
-      <div class="stops" style="font-size:15px" id="tripleEV">EV —</div>
-      <div class="sub">scene equiv.</div>
+      <div class="stops" style="font-size:15px" id="setEV">EV —</div>
+      <div class="sub">your settings</div>
     </div>
   </div>
 
-  <div class="scaleWrap"></div>
+  <div class="spacer"></div>
 
-  <div id="banner" class="banner">
-    Tap <b>Start</b> and allow the camera.<br>
-    Set the sliders to a good-looking exposure, tap <b>Set reference</b>,
-    then change ISO / shutter / aperture to preview over- and under-exposure.
-  </div>
+  <div class="hint" id="hint">Tap the shutter to freeze a shot, then turn the dials.</div>
 
   <div class="bottom">
     <div class="dial">
@@ -113,29 +100,25 @@
       <input id="iso" type="range" min="0" max="6" step="1" value="1">
     </div>
     <div class="shutterRow">
-      <button id="shutterBtn" class="shutter" aria-label="Take photo"></button>
+      <button id="shutterBtn" class="shutter" aria-label="Freeze / take photo"></button>
     </div>
     <div class="btnrow">
       <button id="startBtn">Start</button>
-      <button id="refBtn" class="ghost">Set reference</button>
+      <button id="liveBtn" class="ghost" disabled>Live</button>
       <button id="clipBtn" class="ghost">Clipping</button>
+      <button id="saveBtn" class="ghost" disabled>Save</button>
     </div>
   </div>
 </div>
 
-<div id="flash"></div>
-
-<div id="result" class="hidden">
-  <img id="resultImg" alt="Captured photo">
-  <div class="caption">
-    <div class="big" id="capSettings">—</div>
-    <div class="sub" id="capExposure">—</div>
-  </div>
-  <div class="btnrow">
-    <button id="retakeBtn" class="ghost">Retake</button>
-    <button id="saveBtn">Save / Share</button>
-  </div>
+<div id="banner" class="banner">
+  Tap <b>Start</b> and allow the camera.<br><br>
+  <b>How it works:</b> frame your scene, dial in the exposure your light meter says is correct,
+  then tap the <b>shutter</b> to freeze it. Now change aperture / shutter / ISO to see the shot
+  go over- or under-exposed. Tap <b>Live</b> to reframe.
 </div>
+
+<div id="flash"></div>
 
 <script>
 /* ---------------- Photographic constants ---------------- */
@@ -144,9 +127,7 @@ const SHUTTERS  = [30,15,8,4,2,1,1/2,1/4,1/8,1/15,1/30,1/60,1/125,1/250,1/500,1/
 const ISOS      = [50,100,200,400,800,1600,3200];
 
 const fmtShutter = t => t >= 1 ? (Number.isInteger(t)?t:t.toFixed(0)) + '"' : '1/' + Math.round(1/t);
-// Exposure (light gathered) ∝ shutter * ISO / aperture²
-const expH = (t, S, N) => (t * S) / (N * N);
-// EV at ISO 100 for a triple: log2(N²/t) - log2(S/100)
+const expH  = (t, S, N) => (t * S) / (N * N);            // light gathered ∝ shutter·ISO / aperture²
 const ev100 = (t, S, N) => Math.log2((N*N)/t) - Math.log2(S/100);
 
 /* ---------------- State ---------------- */
@@ -154,60 +135,44 @@ const el = id => document.getElementById(id);
 const video = el('video');
 const apR = el('ap'), shR = el('sh'), isoR = el('iso');
 
-let refH = null;         // reference "correct" exposure factor
+let running = false, stream = null;
+let frozen = false;      // true once a shot is captured; sliders then simulate exposure
+let refH = null;         // exposure factor at the moment of freezing = neutral (0 EV)
 let showClip = false;
-let running = false;
-let stream = null;
 
-function current() {
-  const N = APERTURES[+apR.value];
-  const t = SHUTTERS[+shR.value];
-  const S = ISOS[+isoR.value];
-  return { N, t, S };
+function current(){
+  return { N: APERTURES[+apR.value], t: SHUTTERS[+shR.value], S: ISOS[+isoR.value] };
 }
 
 /* ---------------- WebGL ---------------- */
 const canvas = el('gl');
 const gl = canvas.getContext('webgl', { antialias: false, preserveDrawingBuffer: true });
 
-const VS = `
-  attribute vec2 aPos;
-  varying vec2 vUv;
-  void main(){ vUv = aPos * 0.5 + 0.5; gl_Position = vec4(aPos, 0.0, 1.0); }
-`;
-const FS = `
-  precision mediump float;
-  varying vec2 vUv;
-  uniform sampler2D uTex;
-  uniform vec2  uScale;   // cover-crop scale
-  uniform float uMult;    // exposure multiplier (linear light)
-  uniform float uClip;    // show clipping (0/1)
+const VS = `attribute vec2 aPos; varying vec2 vUv;
+  void main(){ vUv = aPos*0.5+0.5; gl_Position = vec4(aPos,0.0,1.0); }`;
+const FS = `precision mediump float; varying vec2 vUv;
+  uniform sampler2D uTex; uniform vec2 uScale; uniform float uMult; uniform float uClip;
   void main(){
-    vec2 uv = (vUv - 0.5) * uScale + 0.5;
+    vec2 uv = (vUv-0.5)*uScale+0.5;
     vec3 c = texture2D(uTex, uv).rgb;
-    vec3 lin = pow(c, vec3(2.2)) * uMult;      // to linear, apply exposure
-    vec3 outc = pow(clamp(lin, 0.0, 1.0), vec3(1.0/2.2)); // back to sRGB
-    if (uClip > 0.5) {
-      if (lin.r >= 1.0 || lin.g >= 1.0 || lin.b >= 1.0) outc = vec3(1.0, 0.0, 0.0); // blown highlights
-      else if (max(lin.r, max(lin.g, lin.b)) <= 0.02)   outc = vec3(0.0, 0.0, 1.0); // crushed shadows
+    vec3 lin = pow(c, vec3(2.2)) * uMult;
+    vec3 outc = pow(clamp(lin,0.0,1.0), vec3(1.0/2.2));
+    if (uClip > 0.5){
+      if (lin.r>=1.0||lin.g>=1.0||lin.b>=1.0) outc = vec3(1.0,0.0,0.0);
+      else if (max(lin.r,max(lin.g,lin.b))<=0.02) outc = vec3(0.0,0.0,1.0);
     }
-    gl_FragColor = vec4(outc, 1.0);
-  }
-`;
-function compile(type, src){
-  const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
-  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw gl.getShaderInfoLog(s);
-  return s;
-}
+    gl_FragColor = vec4(outc,1.0);
+  }`;
+function compile(type, src){ const s=gl.createShader(type); gl.shaderSource(s,src); gl.compileShader(s);
+  if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)) throw gl.getShaderInfoLog(s); return s; }
 const prog = gl.createProgram();
 gl.attachShader(prog, compile(gl.VERTEX_SHADER, VS));
 gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FS));
-gl.linkProgram(prog);
-gl.useProgram(prog);
+gl.linkProgram(prog); gl.useProgram(prog);
 
 const buf = gl.createBuffer();
 gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW); // big triangle
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
 const aPos = gl.getAttribLocation(prog, 'aPos');
 gl.enableVertexAttribArray(aPos);
 gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
@@ -220,10 +185,10 @@ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
 
-const uTex = gl.getUniformLocation(prog, 'uTex');
+const uTex   = gl.getUniformLocation(prog, 'uTex');
 const uScale = gl.getUniformLocation(prog, 'uScale');
-const uMult = gl.getUniformLocation(prog, 'uMult');
-const uClip = gl.getUniformLocation(prog, 'uClip');
+const uMult  = gl.getUniformLocation(prog, 'uMult');
+const uClip  = gl.getUniformLocation(prog, 'uClip');
 
 function resize(){
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -235,43 +200,49 @@ window.addEventListener('resize', resize);
 
 function coverScale(){
   const vw = video.videoWidth, vh = video.videoHeight;
-  if (!vw || !vh) return [1, 1];
-  const canvasA = canvas.width / canvas.height;
-  const videoA  = vw / vh;
-  return canvasA > videoA ? [1, videoA / canvasA] : [canvasA / videoA, 1];
+  if (!vw || !vh) return [1,1];
+  const cA = canvas.width / canvas.height, vA = vw / vh;
+  return cA > vA ? [1, vA/cA] : [cA/vA, 1];
 }
 
 /* ---------------- Render loop ---------------- */
 function frame(){
   if (!running) return;
-  if (video.readyState >= 2){
+  // Only pull new frames from the camera while LIVE. When frozen, the last frame is held.
+  if (!frozen && video.readyState >= 2){
     gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, video);
-
-    const { N, t, S } = current();
-    const h = expH(t, S, N);
-    if (refH == null) refH = h;               // first frame defines neutral
-    const mult = h / refH;
-
-    gl.uniform1i(uTex, 0);
-    gl.uniform2fv(uScale, coverScale());
-    gl.uniform1f(uMult, mult);
-    gl.uniform1f(uClip, showClip ? 1 : 0);
-    gl.drawArrays(gl.TRIANGLES, 0, 3);
-
-    updateMeter(mult, t, S, N);
   }
+
+  const { N, t, S } = current();
+  // LIVE: show the scene as-is (mult=1) for framing — Safari is auto-exposing it anyway.
+  // FROZEN: brightness relative to the settings at freeze time = a real exposure simulation.
+  const mult = frozen && refH ? expH(t, S, N) / refH : 1;
+
+  gl.uniform1i(uTex, 0);
+  gl.uniform2fv(uScale, coverScale());
+  gl.uniform1f(uMult, mult);
+  gl.uniform1f(uClip, showClip ? 1 : 0);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  updateMeter(mult, t, S, N);
   requestAnimationFrame(frame);
 }
 
 function updateMeter(mult, t, S, N){
+  el('setEV').textContent = 'EV ' + ev100(t, S, N).toFixed(1);
+  const stEl = el('stops'), subEl = el('subEV');
+  if (!frozen){
+    stEl.textContent = 'LIVE';
+    stEl.className = 'stops live';
+    subEl.textContent = 'framing…';
+    return;
+  }
   const stops = Math.log2(mult);
-  const stEl = el('stops');
   stEl.textContent = (stops >= 0 ? '+' : '') + stops.toFixed(1) + ' EV';
   stEl.className = 'stops ' + (Math.abs(stops) < 0.25 ? 'ok' : stops > 0 ? 'over' : 'under');
-  el('subEV').textContent = Math.abs(stops) < 0.25 ? 'at reference'
+  subEl.textContent = Math.abs(stops) < 0.25 ? 'as framed'
       : (stops > 0 ? 'over-exposed' : 'under-exposed');
-  el('tripleEV').textContent = 'EV ' + ev100(t, S, N).toFixed(1);
 }
 
 /* ---------------- Controls ---------------- */
@@ -284,60 +255,52 @@ function refreshLabels(){
 [apR, shR, isoR].forEach(r => r.addEventListener('input', refreshLabels));
 refreshLabels();
 
-el('refBtn').addEventListener('click', () => {
+/* Freeze the current frame; its settings become the neutral 0 EV baseline. */
+function freeze(){
   const { N, t, S } = current();
-  refH = expH(t, S, N);   // make current triple the neutral/correct exposure
-});
-el('clipBtn').addEventListener('click', e => {
-  showClip = !showClip;
-  e.target.classList.toggle('on', showClip);
-});
-
-/* ---------------- Capture / review ---------------- */
-let lastBlob = null, lastURL = null;
-
-function capture(){
-  if (!running) { start(); return; }        // if not started yet, start the camera
-  // shutter flash for feedback
+  refH = expH(t, S, N);
+  frozen = true;
+  el('shutterBtn').classList.add('frozen');
+  el('liveBtn').disabled = false;
+  el('saveBtn').disabled = false;
+  el('hint').textContent = 'Frozen. Turn the dials to see over / under exposure. Tap Live to reframe.';
   const f = el('flash');
-  f.classList.add('fire');
-  requestAnimationFrame(() => requestAnimationFrame(() => f.classList.remove('fire')));
+  f.classList.remove('fade'); f.classList.add('fire');
+  requestAnimationFrame(() => { f.classList.remove('fire'); f.classList.add('fade'); });
+}
 
-  const { N, t, S } = current();
-  const stops = refH ? Math.log2(expH(t, S, N) / refH) : 0;
+/* Return to a live, framing view. */
+function goLive(){
+  frozen = false;
+  el('shutterBtn').classList.remove('frozen');
+  el('liveBtn').disabled = true;
+  el('saveBtn').disabled = true;
+  el('hint').textContent = 'Tap the shutter to freeze a shot, then turn the dials.';
+}
 
-  // The preview canvas already holds the exposure-adjusted frame (buffer is preserved).
-  canvas.toBlob(blob => {
+el('shutterBtn').addEventListener('click', () => {
+  if (!running) { start(); return; }
+  frozen ? goLive() : freeze();
+});
+el('liveBtn').addEventListener('click', goLive);
+el('clipBtn').addEventListener('click', e => { showClip = !showClip; e.target.classList.toggle('on', showClip); });
+
+/* ---------------- Save / share the frozen (adjusted) shot ---------------- */
+el('saveBtn').addEventListener('click', () => {
+  canvas.toBlob(async blob => {
     if (!blob) return;
-    if (lastURL) URL.revokeObjectURL(lastURL);
-    lastBlob = blob;
-    lastURL = URL.createObjectURL(blob);
-    el('resultImg').src = lastURL;
-    el('capSettings').textContent = `f/${N}  ·  ${fmtShutter(t)}  ·  ISO ${S}`;
-    el('capExposure').textContent =
-      `EV ${ev100(t, S, N).toFixed(1)}   ·   ${(stops >= 0 ? '+' : '')}${stops.toFixed(1)} EV vs reference`;
-    el('result').classList.remove('hidden');
+    const stamp = new Date().toISOString().replace(/[:.]/g,'-').slice(0,19);
+    const file = new File([blob], `exposure-${stamp}.jpg`, { type: 'image/jpeg' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })){
+      try { await navigator.share({ files: [file] }); return; } catch (e) { return; }
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = file.name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }, 'image/jpeg', 0.92);
-}
-
-async function saveOrShare(){
-  if (!lastBlob) return;
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const file = new File([lastBlob], `exposure-${stamp}.jpg`, { type: 'image/jpeg' });
-  // iOS: Web Share sheet includes "Save Image" to Photos.
-  if (navigator.canShare && navigator.canShare({ files: [file] })){
-    try { await navigator.share({ files: [file] }); return; }
-    catch (e) { return; } // user cancelled
-  }
-  // Fallback: trigger a download.
-  const a = document.createElement('a');
-  a.href = lastURL; a.download = file.name;
-  document.body.appendChild(a); a.click(); a.remove();
-}
-
-el('shutterBtn').addEventListener('click', capture);
-el('saveBtn').addEventListener('click', saveOrShare);
-el('retakeBtn').addEventListener('click', () => el('result').classList.add('hidden'));
+});
 
 /* ---------------- Camera ---------------- */
 async function start(){
@@ -360,7 +323,7 @@ async function start(){
   }
 }
 function stop(){
-  running = false;
+  running = false; goLive();
   if (stream){ stream.getTracks().forEach(t => t.stop()); stream = null; }
   el('startBtn').textContent = 'Start';
 }
